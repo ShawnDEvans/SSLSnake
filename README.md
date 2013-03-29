@@ -5,20 +5,19 @@ Python v3 based SSL cipher verification tool
 
 SSL Snake v0.9
 
--?  this junk
--h	host or ip
--f	host file
--p	port (default 443)
--all	every supported cipher
--high	high grade ciphers
--med	medium grade ciphers
--low	low grade ciphers
--sslv2	sslv2 ciphers
--anon	null authentication ciphers
--clear	clear-text ciphers
--v	verbose output (print cert details)
-
-Example:
-python sslSnake.py -h www.example.com -low -ssl2 -v
-
+-?  this junk<br>
+-h	host or ip<br>
+-f	host file<br>
+-p	port (default 443)<br>
+-all	every supported cipher<br>
+-high	high grade ciphers<br>
+-med	medium grade ciphers<br>
+-low	low grade ciphers<br>
+-sslv2	sslv2 ciphers<br>
+-anon	null authentication ciphers<br>
+-clear	clear-text ciphers<br>
+-v	verbose output (print cert details)<br><br>
+Example:<br><br>
+python sslSnake.py -h www.example.com -low -ssl2v -v<br>
+<br>
 Hit me up to complain: Shawn.Evans@knowledgecg.com
