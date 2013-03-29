@@ -3,6 +3,10 @@ SSLSnake
 
 Python v3 based SSL cipher verification tool
 
+SSL Snake is a simple tool that verifies the SSL ciphers supported by a given server. It relies on OpenSSL to obtain the list of ciphers supported by the local host, and using this list, attempts to negotiate a connection to the remote server.
+<br><br>
+SSL Snake supports the standard cipher filters supported by OpenSSL: HIGH, MEDIUM, LOW/EXP, eNULL, aNULL, and SSlv2. Combine the cipher suites as you see fit. It's still in beta, and hasn't been tested against nearly enough live targets, so any input or suggestions is very much appreciated.
+<br><br>
 SSL Snake v0.9
 
 -?  this junk<br>
