@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 
 ##  Coded by:   Shawn Evans
 ##  Version:    v.09 beta
@@ -10,6 +10,10 @@ import socket
 import re
 import sys
 import pprint 
+import binascii
+
+
+tmp = '/tmp/sslsnake.pem'
 
 class SSLChecker():
 
@@ -22,33 +26,45 @@ class SSLChecker():
         clearCiphers = [re.split('\ +',cipher.strip()) for cipher in os.popen('openssl ciphers -v "eNULL" 2> /dev/null').read().split('\n')]
         self.complete = {'HIGH':highCiphers,'MEDIUM':medCiphers,'LOW':lowCiphers,'SSLv2':sslv2Ciphers,'aNULL':anonCiphers,'eNULL':clearCiphers}
         
+        self.checkSSLv2 = False
+        self.sslv2Context = None
+ 
         if verbose:
             self.verbose = True
         else:
             self.verbose= False  
         
         self.setHost(host, port) 
-        
-        try:
-            self.sslv2Context = ssl.SSLContext(ssl.PROTOCOL_SSLv2)
-            self.sslv2Context.options |= ssl.OP_NO_SSLv3
-            self.sslv2Context.verify_mode = ssl.CERT_OPTIONAL
-        except AttributeError:
-            print('[ERROR]\tSSLv2 ciphers are not supported')
-            if 'SSLv2' in types: types.remove('SSLv2')
-        except IOError:
-            print('[ERROR]\tCannot open certificate bundle, you might be using Python 2.7 or earlier')
-            sys.exit()
-        
+       
+        if 'SSLv2' in types:
+            self.checkSSLv2= True 
+            try:
+                self.sslv2Context = ssl.SSLContext(ssl.PROTOCOL_SSLv2)
+                self.sslv2Context.options |= ssl.OP_NO_SSLv3
+                self.sslv2Context.set_default_verify_paths()
+                self.sslv2Context.verify_mode = ssl.CERT_OPTIONAL
+            except AttributeError as e:
+                print('[ERROR]\tSSLv2 ciphers are not supported')
+                types.remove('SSLv2')
+            except IOError as e:
+                print('[ERROR]\tCannot open certificate bundle, you might be using Python 2.7 or earlier')
+                sys.exit()
+                print(e)
+            except Exception as e:
+                print(e)
+                sys.exit()
+            
         try:
             self.context = ssl.SSLContext(ssl.PROTOCOL_SSLv3)
-            self.context.options |= ssl.OP_NO_SSLv2
+            self.context.verify_mode = ssl.CERT_OPTIONAL
+            self.context.set_default_verify_paths()
             self.context.verify_mode = ssl.CERT_OPTIONAL
             self.checks = types
-        except IOError:
+        except IOError as e:
+            print(e)
             print('[ERROR]\tCannot open certificate bundle') 
             sys.exit()
-        except AttributeError:
+        except AttributeError as e:
             print('[ERROR]\tCannot open certificate bundle, you might be using Python 2.7 or earlier')
             sys.exit()
 
@@ -82,11 +98,14 @@ class SSLChecker():
                         strength = 'None'
                     
                     try:
-                        self.context.set_ciphers(name)
-                    except:
+                        if self.checkSSLv2 and prot == 'SSLv2':
+                            self.sslv2Context.set_ciphers(name)
+                        else:  
+                            self.context.set_ciphers(name)
+                    except Exception as e:
                         continue
         
-                    self.sslConnect(name, prot, strength, cipherType, keyEx, .5)
+                    self.sslConnect(name, prot, strength, cipherType, keyEx, 2)
                     
             else:
                 print('[ERROR]\tInvalid cipher list')
@@ -97,23 +116,20 @@ class SSLChecker():
         self.supported = []
 
     def sslConnect(self, name, prot, strength, cipherType, keyEx, timeout):    
-        if (prot == 'SSLv2'):
-            sslSock = self.sslv2Context.wrap_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
+        if (self.checkSSLv2 and prot == 'SSLv2'):
+            sslSock = self.sslv2Context.wrap_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) 
         else:
             sslSock = self.context.wrap_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
         if self.portOpen: 
             try:
                 sslSock.settimeout(timeout)
                 sslSock.connect((self.host, self.port))
-                self.supported.append([name,prot,strength,keyEx, cipherType])
-                sslSock.close()
+                self.supported.append([name,prot,strength,keyEx,cipherType])
             except socket.gaierror:
                 print('[ERROR]\tUnable to connect to host %s' % self.host)
-                sslSock.close()
             except ssl.SSLError as e:
                 if self.verbose:
                     print('[FAILURE]\t%s\t%s\t%s\t%s' % (name.ljust(25), prot, strength, cipherType))
-                sslSock.close()
             except socket.error as e:
                 if self.verbose:
                     print('[ERROR]\tConnection reset by peer, cipher not supported.  Cipher: %s\tHost:%s' % (name,self.host))
@@ -125,39 +141,39 @@ class SSLChecker():
     def hostnameMatch(self):
         if self.portOpen:
             try:
-                self.context.set_ciphers('HIGH:MEDIUM')
                 sslSock = self.context.wrap_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-                sslSock.settimeout(.5) 
+                sslSock.settimeout(2) 
                 sslSock.connect((self.host, self.port))
                 cert = sslSock.getpeercert()
                 if self.verbose:
-                    print('[INFO]\tCertificate data:')
-                    pprint.pprint(cert)
+                    print('[INFO]\tCertificate data: ')
+                    print(pprint.pformat(cert))
                 ssl.match_hostname(cert, self.host)
-                sslSock.close()
             except socket.timeout:
                 print('[ERROR]\tConnection timeout, verify host and port: %s:%s') % (self.host, self.port)
-                sslSock.close()
             except ssl.SSLError as e:
                 print('[INFO]\tCertificate verification error on %s:%s.' % (self.host, self.port))
-                sslSock.close()
+                print('[INFO]\tUsing workaround to get cert data....')
+                cert = ssl.get_server_certificate((self.host, self.port)) 
+                open(tmp,'w+').write(cert)
+                print(os.popen(('cat %s | openssl x509 -text -noout') % (tmp)).read())
             except socket.gaierror:
                 print('[ERROR]\tUnable to connect to host %s' % self.host)
                 pass
-            except socket.error:
+            except socket.error as e:
                 if self.verbose:
                     print('[ERROR]\tConnection reset by peer (port closed): ', self.host)
-                sslSock.close()
+                print(e)
             except ssl.CertificateError:
                 for value in cert['subject']:
                     if 'commonName' in value[0]:
                         common = value[0][1]
                 print('[INFO]\tHost %s does not match common name %s' % (self.host, common))
-                sslSock.close()
+            #sslSock.close()
             
     def isOpen(self, ip, port):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(.5)
+        s.settimeout(5)
         if self.verbose:
             print('[INFO]\tTrying %s:%s' % (ip, port))  
         try:
@@ -166,13 +182,14 @@ class SSLChecker():
             if self.verbose:
                 print('[INFO]\tport: %s\thost: %s OPEN' % (port, ip))
             return True
-        except:
+        except Exception as e:
+            print('[INFO]\tException encountered: %s' % e)
             return False       
 
 def usage():
     print('\nSSL Snake v0.9')
     print('')
-    print('-?\tthis junk')
+    print('-?\tthis junk')
     print('-h\thost or ip')
     print('-f\thost file')
     print('-p\tport (default 443)')
@@ -197,6 +214,7 @@ if __name__ == '__main__':
     host = ''
     port = 443
     verbose = False
+    hostFile = None
 
     if '-h' in sys.argv:
         try:
@@ -213,8 +231,13 @@ if __name__ == '__main__':
             print('[ERROR]\tInvalid host file')
             usage()
             sys.exit()
+    elif not sys.stdin.isatty():
+        hostFile = sys.stdin.readlines()
     else:
         print('[ERROR]\tMissing host')
+        usage()
+        sys.exit()
+
     if '-p' in sys.argv:
         try:
             port = int(sys.argv[sys.argv.index('-p')+1])
@@ -237,7 +260,7 @@ if __name__ == '__main__':
     if len(cipherTypes) == 0:
         print('[INFO]\tNo valid filters supplied, using -all')
         cipherTypes.extend(['HIGH','MEDIUM','LOW','SSLv2','aNULL','eNULL'])
-    if '-f' in sys.argv:
+    if hostFile:
         for hostEntry in hostFile:
             if ':' in hostEntry:
                 host = hostEntry.strip().split(':')[0]
